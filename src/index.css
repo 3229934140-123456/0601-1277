@@ -1,0 +1,140 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  padding: 24px;
+  overflow: auto;
+}
+
+.upload-zone {
+  border: 2px dashed #d9d9d9;
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafafa;
+}
+
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.stat-card.green {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.stat-card.orange {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.stat-card.blue {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.anomaly-card {
+  border-left: 4px solid;
+  transition: all 0.3s;
+}
+
+.anomaly-card.critical {
+  border-left-color: #ff4d4f;
+  background: #fff1f0;
+}
+
+.anomaly-card.warning {
+  border-left-color: #faad14;
+  background: #fffbe6;
+}
+
+.metric-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.metric-tag.high {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+.metric-tag.low {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.chart-container {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.filter-bar {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.data-table {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.export-cover-preview {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+  padding: 60px 40px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.export-cover-preview h1 {
+  color: white;
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+
+.export-cover-preview p {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+}
+
+.nav-menu {
+  background: #001529 !important;
+}
+
+.ant-menu-item-selected {
+  background: #1890ff !important;
+}
