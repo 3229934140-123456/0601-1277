@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   Card,
   Row,
@@ -12,18 +12,25 @@ import {
   Empty,
   Button,
   Dropdown,
-  MenuProps
+  MenuProps,
+  message
 } from 'antd'
 import {
   DownloadOutlined,
   FilterOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  FilePdfOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { useAppStore } from '@/store'
 import { MergedData } from '@/types'
 import dayjs from 'dayjs'
-import { exportToExcel, downloadFile } from '@/utils/exportHelper'
+import {
+  exportToPDF,
+  exportToExcel,
+  downloadFile
+} from '@/utils/exportHelper'
 
 const { RangePicker } = DatePicker
 const { Option } = Select
@@ -32,13 +39,16 @@ export default function ReportBrowse() {
   const {
     stores,
     mergedData,
+    anomalies,
     filters,
     setFilters,
     processAndMergeData,
     runAnomalyDetection
   } = useAppStore()
 
-  const chartRef = useRef<ReactECharts>(null)
+  const trendChartRef = useRef<ReactECharts>(null)
+  const rankingChartRef = useRef<ReactECharts>(null)
+  const [exporting, setExporting] = useState(false)
 
   const brands = Array.from(new Set(stores.map((s) => s.brand)))
   const regions = Array.from(new Set(stores.map((s) => s.region)))
@@ -63,6 +73,24 @@ export default function ReportBrowse() {
 
     return result.sort((a, b) => a.date.localeCompare(b.date))
   }, [mergedData, filters])
+
+  const filteredAnomalies = useMemo(() => {
+    return anomalies.filter((a) => !a.resolved).filter((a) => {
+      if (filters.brands.length > 0) {
+        const store = stores.find((s) => s.id === a.storeId)
+        if (!store || !filters.brands.includes(store.brand)) return false
+      }
+      if (filters.regions.length > 0) {
+        const store = stores.find((s) => s.id === a.storeId)
+        if (!store || !filters.regions.includes(store.region)) return false
+      }
+      if (filters.stores.length > 0 && !filters.stores.includes(a.storeId)) return false
+      if (filters.dateRange) {
+        if (a.date < filters.dateRange[0] || a.date > filters.dateRange[1]) return false
+      }
+      return true
+    })
+  }, [anomalies, filters, stores])
 
   const summaryStats = useMemo(() => {
     if (filteredData.length === 0) {
@@ -257,10 +285,70 @@ export default function ReportBrowse() {
     }
   }, [storeRankingData])
 
-  const handleExport = () => {
+  const getChartImages = (): string[] => {
+    const images: string[] = []
+    try {
+      if (trendChartRef.current) {
+        const instance = trendChartRef.current.getEchartsInstance()
+        if (instance) {
+          images.push(instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' }))
+        }
+      }
+      if (rankingChartRef.current) {
+        const instance = rankingChartRef.current.getEchartsInstance()
+        if (instance) {
+          images.push(instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' }))
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return images
+  }
+
+  const handleExportExcel = () => {
     const blob = exportToExcel(filteredData)
     const filename = `经营数据_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
     downloadFile(blob, filename)
+    message.success('Excel 导出成功')
+  }
+
+  const handleExportPDF = async () => {
+    if (filteredData.length === 0) {
+      message.warning('没有数据可导出')
+      return
+    }
+    setExporting(true)
+    try {
+      const chartImages = getChartImages()
+      const periodLabel = filters.dateRange
+        ? `${filters.dateRange[0]} 至 ${filters.dateRange[1]}`
+        : dayjs().format('YYYY年MM月')
+
+      const config = {
+        coverTitle: '经营分析报告',
+        coverSubtitle: filters.brands.length > 0
+          ? filters.brands.join('、')
+          : '连锁餐饮门店',
+        period: periodLabel,
+        includeCharts: true,
+        includeTables: true,
+        includeAnomalies: filteredAnomalies.length > 0,
+        storeCount: summaryStats.storeCount,
+        totalRevenue: summaryStats.totalRevenue,
+        anomalyCount: filteredAnomalies.length,
+        chartImages
+      }
+
+      const blob = await exportToPDF(filteredData, filteredAnomalies, config, chartImages[0])
+      const filename = `经营分析报告_${dayjs().format('YYYYMMDD_HHmmss')}.pdf`
+      downloadFile(blob, filename)
+      message.success('PDF 导出成功')
+    } catch (error) {
+      message.error(`导出失败: ${(error as Error).message}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleRefresh = () => {
@@ -270,16 +358,16 @@ export default function ReportBrowse() {
 
   const exportMenuItems: MenuProps['items'] = [
     {
-      key: 'excel',
-      label: '导出 Excel',
-      onClick: handleExport
+      key: 'pdf',
+      icon: <FilePdfOutlined />,
+      label: '导出 PDF 报告',
+      onClick: handleExportPDF
     },
     {
-      key: 'pdf',
-      label: '导出 PDF',
-      onClick: () => {
-        // 将跳转到导出中心
-      }
+      key: 'excel',
+      icon: <FileExcelOutlined />,
+      label: '导出 Excel 表格',
+      onClick: handleExportExcel
     }
   ]
 
@@ -491,7 +579,7 @@ export default function ReportBrowse() {
             刷新
           </Button>
           <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight">
-            <Button type="primary" icon={<DownloadOutlined />}>
+            <Button type="primary" icon={<DownloadOutlined />} loading={exporting}>
               导出
             </Button>
           </Dropdown>
@@ -566,12 +654,12 @@ export default function ReportBrowse() {
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col span={16}>
           <Card title="营业趋势图" className="chart-container">
-            <ReactECharts ref={chartRef} option={trendChartOption} style={{ height: 350 }} />
+            <ReactECharts ref={trendChartRef} option={trendChartOption} style={{ height: 350 }} />
           </Card>
         </Col>
         <Col span={8}>
           <Card title="门店营业额排行" className="chart-container">
-            <ReactECharts option={rankingChartOption} style={{ height: 350 }} />
+            <ReactECharts ref={rankingChartRef} option={rankingChartOption} style={{ height: 350 }} />
           </Card>
         </Col>
       </Row>

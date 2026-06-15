@@ -42,6 +42,7 @@ interface AppState {
   deleteMetricConfig: (id: string) => void
   addSavedView: (view: SavedView) => void
   deleteSavedView: (id: string) => void
+  applySavedView: (view: SavedView) => void
   updateAnomalyNote: (id: string, note: string) => void
   resolveAnomaly: (id: string) => void
   processAndMergeData: () => void
@@ -138,6 +139,18 @@ export const useAppStore = create<AppState>()(
       })),
       addSavedView: (view) => set((state) => ({ savedViews: [...state.savedViews, view] })),
       deleteSavedView: (id) => set((state) => ({ savedViews: state.savedViews.filter((v) => v.id !== id) })),
+      applySavedView: (view) => set((state) => ({
+        filters: {
+          brands: view.filters.brands,
+          regions: view.filters.regions,
+          dateRange: view.filters.dateRange,
+          stores: view.filters.stores
+        },
+        metricConfigs: state.metricConfigs.map((c) => ({
+          ...c,
+          enabled: view.metrics.includes(c.id)
+        }))
+      })),
       updateAnomalyNote: (id, note) => set((state) => ({
         anomalies: state.anomalies.map((a) => (a.id === id ? { ...a, notes: note } : a))
       })),
@@ -167,8 +180,15 @@ export const useAppStore = create<AppState>()(
       name: 'restaurant-analyzer-storage',
       partialize: (state) => ({
         stores: state.stores,
+        revenueData: state.revenueData,
+        costData: state.costData,
+        mergedData: state.mergedData,
+        files: state.files,
         metricConfigs: state.metricConfigs,
-        savedViews: state.savedViews
+        savedViews: state.savedViews,
+        anomalies: state.anomalies,
+        filters: state.filters,
+        selectedPeriod: state.selectedPeriod
       })
     }
   )

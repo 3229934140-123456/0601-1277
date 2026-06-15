@@ -17,14 +17,17 @@ import {
   DatePicker,
   Select,
   Row,
-  Col
+  Col,
+  Typography
 } from 'antd'
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   SaveOutlined,
-  FundOutlined
+  StarOutlined,
+  StarFilled,
+  FolderOutlined
 } from '@ant-design/icons'
 import { useAppStore } from '@/store'
 import { MetricConfig, SavedView } from '@/types'
@@ -33,6 +36,7 @@ import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
 const { Option } = Select
+const { Text } = Typography
 
 export default function MetricConfigPage() {
   const {
@@ -45,15 +49,19 @@ export default function MetricConfigPage() {
     deleteMetricConfig,
     addSavedView,
     deleteSavedView,
+    applySavedView,
     setFilters
   } = useAppStore()
 
   const [modalVisible, setModalVisible] = useState(false)
   const [editingConfig, setEditingConfig] = useState<MetricConfig | null>(null)
+  const [saveViewVisible, setSaveViewVisible] = useState(false)
+  const [viewName, setViewName] = useState('')
   const [form] = Form.useForm()
 
   const brands = Array.from(new Set(stores.map((s) => s.brand)))
   const regions = Array.from(new Set(stores.map((s) => s.region)))
+  const enabledMetricCount = metricConfigs.filter((m) => m.enabled).length
 
   const handleAdd = () => {
     setEditingConfig(null)
@@ -108,46 +116,34 @@ export default function MetricConfigPage() {
   }
 
   const handleSaveView = () => {
-    Modal.confirm({
-      title: '保存视图',
-      content: (
-        <Form layout="vertical">
-          <Form.Item label="视图名称" name="viewName">
-            <Input placeholder="请输入视图名称" />
-          </Form.Item>
-        </Form>
-      ),
-      onOk: async () => {
-        const form = Modal.confirm as any
-        const name = form?.getFieldsValue?.().viewName || '常用视图'
-        
-        const view: SavedView = {
-          id: generateId(),
-          name,
-          filters: {
-            brands: filters.brands,
-            regions: filters.regions,
-            dateRange: filters.dateRange || [dayjs().format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')],
-            stores: filters.stores
-          },
-          metrics: metricConfigs.filter((m) => m.enabled).map((m) => m.id),
-          createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
-        }
+    setViewName('')
+    setSaveViewVisible(true)
+  }
 
-        addSavedView(view)
-        message.success('视图已保存')
-      }
-    })
+  const confirmSaveView = () => {
+    const name = viewName.trim() || '未命名视图'
+
+    const view: SavedView = {
+      id: generateId(),
+      name,
+      filters: {
+        brands: filters.brands,
+        regions: filters.regions,
+        dateRange: filters.dateRange || [dayjs().format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')],
+        stores: filters.stores
+      },
+      metrics: metricConfigs.filter((m) => m.enabled).map((m) => m.id),
+      createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
+    }
+
+    addSavedView(view)
+    setSaveViewVisible(false)
+    message.success(`收藏夹「${name}」已保存`)
   }
 
   const handleLoadView = (view: SavedView) => {
-    setFilters({
-      brands: view.filters.brands,
-      regions: view.filters.regions,
-      dateRange: view.filters.dateRange,
-      stores: view.filters.stores
-    })
-    message.success(`已加载视图: ${view.name}`)
+    applySavedView(view)
+    message.success(`已加载收藏：${view.name}`)
   }
 
   const columns = [
@@ -241,7 +237,7 @@ export default function MetricConfigPage() {
 
         <Col span={8}>
           <Card
-            title="常用视图"
+            title={<span><StarFilled style={{ color: '#faad14', marginRight: 6 }} />收藏夹</span>}
             extra={
               <Button icon={<SaveOutlined />} onClick={handleSaveView}>
                 保存当前视图
@@ -250,42 +246,60 @@ export default function MetricConfigPage() {
           >
             <List
               dataSource={savedViews}
-              locale={{ emptyText: '暂无保存的视图' }}
-              renderItem={(view) => (
-                <List.Item
-                  actions={[
-                    <Button size="small" type="link" onClick={() => handleLoadView(view)}>
-                      加载
-                    </Button>,
-                    <Popconfirm
-                      title="确定删除此视图？"
-                      onConfirm={() => {
-                        deleteSavedView(view.id)
-                        message.success('已删除')
-                      }}
-                    >
-                      <Button size="small" type="link" danger>
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  ]}
-                >
-                  <List.Item.Meta
-                    avatar={<FundOutlined style={{ color: '#1890ff', fontSize: 20 }} />}
-                    title={view.name}
-                    description={
-                      <div>
-                        <div>品牌: {view.filters.brands.length > 0 ? view.filters.brands.join(', ') : '全部'}</div>
-                        <div>区域: {view.filters.regions.length > 0 ? view.filters.regions.join(', ') : '全部'}</div>
-                        <div>日期: {view.filters.dateRange[0]} ~ {view.filters.dateRange[1]}</div>
-                        <div style={{ color: '#999', fontSize: 12, marginTop: 4 }}>
-                          保存于 {view.createdAt}
+              locale={{ emptyText: '暂无收藏的视图，点击「保存当前视图」添加' }}
+              renderItem={(view) => {
+                const metricNames = view.metrics
+                  .map((mid) => metricConfigs.find((c) => c.id === mid)?.name)
+                  .filter(Boolean)
+                return (
+                  <List.Item
+                    actions={[
+                      <Button size="small" type="link" onClick={() => handleLoadView(view)}>
+                        加载
+                      </Button>,
+                      <Popconfirm
+                        title="确定删除此收藏？"
+                        onConfirm={() => {
+                          deleteSavedView(view.id)
+                          message.success('已删除')
+                        }}
+                      >
+                        <Button size="small" type="link" danger>
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={<FolderOutlined style={{ color: '#1890ff', fontSize: 20, marginTop: 4 }} />}
+                      title={<span style={{ fontSize: 14 }}>{view.name}</span>}
+                      description={
+                        <div style={{ fontSize: 12 }}>
+                          <div>
+                            <Text type="secondary">品牌：</Text>
+                            {view.filters.brands.length > 0 ? view.filters.brands.join('、') : '全部'}
+                          </div>
+                          <div>
+                            <Text type="secondary">区域：</Text>
+                            {view.filters.regions.length > 0 ? view.filters.regions.join('、') : '全部'}
+                          </div>
+                          <div>
+                            <Text type="secondary">日期：</Text>
+                            {view.filters.dateRange[0]} ~ {view.filters.dateRange[1]}
+                          </div>
+                          <div>
+                            <Text type="secondary">指标：</Text>
+                            {metricNames.length > 0 ? metricNames.join('、') : '无'}
+                          </div>
+                          <div style={{ color: '#bbb', marginTop: 2 }}>
+                            收藏于 {view.createdAt}
+                          </div>
                         </div>
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
+                      }
+                    />
+                  </List.Item>
+                )
+              }}
             />
           </Card>
 
@@ -352,6 +366,9 @@ export default function MetricConfigPage() {
                   style={{ width: '100%' }}
                 />
               </div>
+              <div style={{ background: '#f6f6f6', padding: '8px 12px', borderRadius: 4, fontSize: 12, color: '#888' }}>
+                当前启用指标 {enabledMetricCount} 项 · 品牌 {filters.brands.length || '全部'} · 区域 {filters.regions.length || '全部'}
+              </div>
             </Space>
           </Card>
         </Col>
@@ -404,6 +421,34 @@ export default function MetricConfigPage() {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      <Modal
+        title={<span><StarFilled style={{ color: '#faad14', marginRight: 6 }} />保存到收藏夹</span>}
+        open={saveViewVisible}
+        onOk={confirmSaveView}
+        onCancel={() => setSaveViewVisible(false)}
+        okText="保存"
+        width={460}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>收藏名称</label>
+          <Input
+            value={viewName}
+            onChange={(e) => setViewName(e.target.value)}
+            placeholder="如：品牌A华北区月度分析"
+            onPressEnter={confirmSaveView}
+            autoFocus
+          />
+        </div>
+        <div style={{ background: '#fafafa', padding: 12, borderRadius: 6, fontSize: 13, color: '#555' }}>
+          <div style={{ marginBottom: 4 }}>将保存以下内容：</div>
+          <div>品牌：{filters.brands.length > 0 ? filters.brands.join('、') : '全部'}</div>
+          <div>区域：{filters.regions.length > 0 ? filters.regions.join('、') : '全部'}</div>
+          <div>门店：{filters.stores.length > 0 ? `${filters.stores.length} 家` : '全部'}</div>
+          <div>日期：{filters.dateRange ? `${filters.dateRange[0]} ~ ${filters.dateRange[1]}` : '未指定'}</div>
+          <div>启用指标：{metricConfigs.filter((m) => m.enabled).map((m) => m.name).join('、') || '无'}</div>
+        </div>
       </Modal>
     </div>
   )

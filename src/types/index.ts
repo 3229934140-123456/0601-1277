@@ -112,6 +112,10 @@ export interface ExportConfig {
   includeCharts: boolean
   includeTables: boolean
   includeAnomalies: boolean
+  storeCount?: number
+  totalRevenue?: number
+  anomalyCount?: number
+  chartImages?: string[]
 }
 
 declare global {

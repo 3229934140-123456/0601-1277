@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Card,
   Form,
@@ -14,14 +14,19 @@ import {
   Tabs,
   message,
   Divider,
-  Steps
+  Steps,
+  Tag
 } from 'antd'
 import {
   FilePdfOutlined,
   FileExcelOutlined,
   EyeOutlined,
   DownloadOutlined,
-  PictureOutlined
+  PictureOutlined,
+  CalendarOutlined,
+  ShopOutlined,
+  DollarOutlined,
+  WarningOutlined
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { useAppStore } from '@/store'
@@ -54,6 +59,7 @@ export default function ExportCenter() {
   const [exportType, setExportType] = useState<'pdf' | 'excel'>('pdf')
   const [exporting, setExporting] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
+  const [selectedMonth, setSelectedMonth] = useState<dayjs.Dayjs | null>(null)
 
   const brands = Array.from(new Set(stores.map((s) => s.brand)))
   const regions = Array.from(new Set(stores.map((s) => s.region)))
@@ -90,6 +96,44 @@ export default function ExportCenter() {
         return a.date >= filters.dateRange[0] && a.date <= filters.dateRange[1]
       })
   }, [anomalies, filters, stores])
+
+  const stats = useMemo(() => {
+    const totalRevenue = filteredData.reduce((sum, d) => sum + d.revenue, 0)
+    const totalProfit = filteredData.reduce((sum, d) => sum + d.grossProfit, 0)
+    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+
+    return {
+      totalRevenue,
+      totalProfit,
+      avgMargin,
+      recordCount: filteredData.length,
+      anomalyCount: filteredAnomalies.length,
+      storeCount: new Set(filteredData.map((d) => d.storeId)).size
+    }
+  }, [filteredData, filteredAnomalies])
+
+  const periodLabel = useMemo(() => {
+    if (selectedMonth) {
+      return `${selectedMonth.format('YYYY年M月')}`
+    }
+    if (filters.dateRange) {
+      return `${filters.dateRange[0]} 至 ${filters.dateRange[1]}`
+    }
+    return dayjs().format('YYYY年MM月')
+  }, [selectedMonth, filters.dateRange])
+
+  useEffect(() => {
+    if (selectedMonth) {
+      const title = `${selectedMonth.format('YYYY年M月')}经营分析报告`
+      const subtitle = filters.brands.length > 0
+        ? filters.brands.join('、') + ' 门店经营数据分析'
+        : '连锁餐饮门店经营数据分析'
+      form.setFieldsValue({
+        coverTitle: title,
+        coverSubtitle: subtitle
+      })
+    }
+  }, [selectedMonth, filters.brands, form])
 
   const coverChartOption = useMemo(() => {
     const dates = Array.from(new Set(filteredData.map((d) => d.date))).sort()
@@ -145,75 +189,20 @@ export default function ExportCenter() {
     }
   }, [filteredData])
 
-  const stats = useMemo(() => {
-    const totalRevenue = filteredData.reduce((sum, d) => sum + d.revenue, 0)
-    const totalProfit = filteredData.reduce((sum, d) => sum + d.grossProfit, 0)
-    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
-
-    return {
-      totalRevenue,
-      totalProfit,
-      avgMargin,
-      recordCount: filteredData.length,
-      anomalyCount: filteredAnomalies.length,
-      storeCount: new Set(filteredData.map((d) => d.storeId)).size
-    }
-  }, [filteredData, filteredAnomalies])
-
-  const handleExport = async () => {
-    try {
-      const values = await form.validateFields()
-      setExporting(true)
-
-      let chartDataUrl: string | undefined
-      if (values.includeCharts && chartRef.current) {
-        const chartInstance = chartRef.current.getEchartsInstance()
-        chartDataUrl = chartInstance.getDataURL({
-          type: 'png',
-          pixelRatio: 2,
-          backgroundColor: '#fff'
-        })
-      }
-
-      const config: ExportConfig = {
-        coverTitle: values.coverTitle || '月度经营分析报告',
-        coverSubtitle: values.coverSubtitle || '连锁餐饮门店经营数据分析',
-        period: selectedPeriod || (filters.dateRange ? `${filters.dateRange[0]} 至 ${filters.dateRange[1]}` : dayjs().format('YYYY年MM月')),
-        includeCharts: values.includeCharts,
-        includeTables: values.includeTables,
-        includeAnomalies: values.includeAnomalies
-      }
-
-      if (exportType === 'pdf') {
-        const blob = await exportToPDF(filteredData, filteredAnomalies, config, chartDataUrl)
-        const filename = `${config.coverTitle}_${dayjs().format('YYYYMMDD_HHmmss')}.pdf`
-        downloadFile(blob, filename)
-        message.success('PDF 导出成功')
-      } else {
-        const dataBlob = exportToExcel(filteredData)
-        const filename = `经营数据_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
-        downloadFile(dataBlob, filename)
-
-        if (filteredAnomalies.length > 0 && config.includeAnomalies) {
-          const anomalyBlob = exportAnomaliesToExcel(filteredAnomalies)
-          const anomalyFilename = `异常记录_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
-          setTimeout(() => {
-            downloadFile(anomalyBlob, anomalyFilename)
-          }, 500)
-        }
-        message.success('Excel 导出成功')
-      }
-
-      setCurrentStep(2)
-    } catch (error) {
-      message.error(`导出失败: ${(error as Error).message}`)
-    } finally {
-      setExporting(false)
+  const handleMonthSelect = (date: dayjs.Dayjs | null) => {
+    setSelectedMonth(date)
+    if (date) {
+      const start = date.startOf('month').format('YYYY-MM-DD')
+      const end = date.endOf('month').format('YYYY-MM-DD')
+      setFilters({ dateRange: [start, end] })
+      setSelectedPeriod(date.format('YYYY年M月'))
+      setCurrentStep(1)
     }
   }
 
   const handlePeriodSelect = (period: string) => {
     setSelectedPeriod(period)
+    setSelectedMonth(null)
     const now = dayjs()
     let start, end
 
@@ -255,14 +244,78 @@ export default function ExportCenter() {
     setFilters({
       dateRange: [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
     })
+
+    const title = `${period}经营分析报告`
+    const subtitle = filters.brands.length > 0
+      ? filters.brands.join('、') + ' 门店经营数据分析'
+      : '连锁餐饮门店经营数据分析'
+    form.setFieldsValue({ coverTitle: title, coverSubtitle: subtitle })
+    setCurrentStep(1)
+  }
+
+  const handleExport = async () => {
+    try {
+      const values = await form.validateFields()
+      setExporting(true)
+
+      let chartImages: string[] = []
+      if (values.includeCharts && chartRef.current) {
+        const chartInstance = chartRef.current.getEchartsInstance()
+        const dataUrl = chartInstance.getDataURL({
+          type: 'png',
+          pixelRatio: 2,
+          backgroundColor: '#fff'
+        })
+        chartImages = [dataUrl]
+      }
+
+      const config: ExportConfig = {
+        coverTitle: values.coverTitle || '月度经营分析报告',
+        coverSubtitle: values.coverSubtitle || '连锁餐饮门店经营数据分析',
+        period: periodLabel,
+        includeCharts: values.includeCharts,
+        includeTables: values.includeTables,
+        includeAnomalies: values.includeAnomalies,
+        storeCount: stats.storeCount,
+        totalRevenue: stats.totalRevenue,
+        anomalyCount: stats.anomalyCount,
+        chartImages
+      }
+
+      if (exportType === 'pdf') {
+        const blob = await exportToPDF(filteredData, filteredAnomalies, config, chartImages[0])
+        const filename = `${config.coverTitle}_${dayjs().format('YYYYMMDD_HHmmss')}.pdf`
+        downloadFile(blob, filename)
+        message.success('PDF 导出成功')
+      } else {
+        const dataBlob = exportToExcel(filteredData)
+        const filename = `经营数据_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
+        downloadFile(dataBlob, filename)
+
+        if (filteredAnomalies.length > 0 && config.includeAnomalies) {
+          const anomalyBlob = exportAnomaliesToExcel(filteredAnomalies)
+          const anomalyFilename = `异常记录_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`
+          setTimeout(() => {
+            downloadFile(anomalyBlob, anomalyFilename)
+          }, 500)
+        }
+        message.success('Excel 导出成功')
+      }
+
+      setCurrentStep(2)
+    } catch (error) {
+      message.error(`导出失败: ${(error as Error).message}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
     <div>
       <Card>
         <Steps current={currentStep} style={{ marginBottom: 24 }}>
-          <Step title="配置封面" description="设置报表标题和周期" />
-          <Step title="选择内容" description="筛选数据和包含内容" />
+          <Step title="选择月份" description="选择要导出的月度" />
+          <Step title="配置封面" description="设置报表标题和内容" />
           <Step title="导出文件" description="下载报表文件" />
         </Steps>
 
@@ -280,6 +333,39 @@ export default function ExportCenter() {
             }
           ]}
         />
+
+        <Divider orientation="left">选择月份</Divider>
+
+        <Row gutter={16} align="middle">
+          <Col>
+            <Space>
+              <CalendarOutlined style={{ fontSize: 16, color: '#1890ff' }} />
+              <span style={{ fontWeight: 500 }}>月份选择：</span>
+              <DatePicker
+                picker="month"
+                value={selectedMonth}
+                onChange={handleMonthSelect}
+                placeholder="选择月份"
+                style={{ width: 180 }}
+              />
+            </Space>
+          </Col>
+          <Col>
+            <span style={{ color: '#999', marginRight: 8 }}>快捷：</span>
+            <Space wrap>
+              {['本月', '上月', '本季度', '上季度', '本年'].map((period) => (
+                <Button
+                  key={period}
+                  size="small"
+                  type={selectedPeriod === period ? 'primary' : 'default'}
+                  onClick={() => handlePeriodSelect(period)}
+                >
+                  {period}
+                </Button>
+              ))}
+            </Space>
+          </Col>
+        </Row>
 
         <Divider orientation="left">月报封面配置</Divider>
 
@@ -306,24 +392,6 @@ export default function ExportCenter() {
                 label="副标题"
               >
                 <Input placeholder="如：品牌A 华北区域" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item label="快速选择周期">
-                <Space wrap>
-                  {['本月', '上月', '本季度', '上季度', '本年'].map((period) => (
-                    <Button
-                      key={period}
-                      type={selectedPeriod === period ? 'primary' : 'default'}
-                      onClick={() => handlePeriodSelect(period)}
-                    >
-                      {period}
-                    </Button>
-                  ))}
-                </Space>
               </Form.Item>
             </Col>
           </Row>
@@ -420,26 +488,43 @@ export default function ExportCenter() {
             </Col>
           </Row>
 
-          <Divider orientation="left">数据概览</Divider>
+          <Divider orientation="left">封面摘要（自动生成）</Divider>
 
           <Row gutter={[16, 16]}>
             <Col span={4}>
-              <Statistic title="总营业额" value={stats.totalRevenue} precision={2} prefix="¥" />
+              <Statistic
+                title={<span><CalendarOutlined /> 报表周期</span>}
+                valueRender={() => <span style={{ fontSize: 14 }}>{periodLabel}</span>}
+              />
+            </Col>
+            <Col span={4}>
+              <Statistic
+                title={<span><ShopOutlined /> 门店数</span>}
+                value={stats.storeCount}
+                suffix="家"
+              />
+            </Col>
+            <Col span={5}>
+              <Statistic
+                title={<span><DollarOutlined /> 总营收</span>}
+                value={stats.totalRevenue}
+                precision={2}
+                prefix="¥"
+              />
             </Col>
             <Col span={4}>
               <Statistic title="总毛利" value={stats.totalProfit} precision={2} prefix="¥" />
             </Col>
-            <Col span={4}>
-              <Statistic title="平均毛利率" value={stats.avgMargin} precision={1} suffix="%" />
+            <Col span={3}>
+              <Statistic title="毛利率" value={stats.avgMargin} precision={1} suffix="%" />
             </Col>
             <Col span={4}>
-              <Statistic title="门店数" value={stats.storeCount} />
-            </Col>
-            <Col span={4}>
-              <Statistic title="数据记录" value={stats.recordCount} />
-            </Col>
-            <Col span={4}>
-              <Statistic title="异常记录" value={stats.anomalyCount} />
+              <Statistic
+                title={<span><WarningOutlined /> 异常数</span>}
+                value={stats.anomalyCount}
+                suffix="条"
+                valueStyle={stats.anomalyCount > 0 ? { color: '#ff4d4f' } : undefined}
+              />
             </Col>
           </Row>
 
@@ -448,15 +533,60 @@ export default function ExportCenter() {
               <Divider orientation="left">封面预览</Divider>
               <Row gutter={16}>
                 <Col span={12}>
-                  <div className="export-cover-preview">
-                    <h1>{form.getFieldValue('coverTitle') || '月度经营分析报告'}</h1>
-                    <p>{form.getFieldValue('coverSubtitle') || '连锁餐饮门店经营数据分析'}</p>
-                    <p style={{ marginTop: 20 }}>
-                      报表周期: {selectedPeriod || (filters.dateRange ? `${filters.dateRange[0]} 至 ${filters.dateRange[1]}` : dayjs().format('YYYY年MM月'))}
-                    </p>
-                    <p style={{ fontSize: 14, marginTop: 40, opacity: 0.7 }}>
-                      生成时间: {dayjs().format('YYYY-MM-DD HH:mm:ss')}
-                    </p>
+                  <div className="export-cover-preview" style={{
+                    background: 'linear-gradient(135deg, #1a237e 0%, #283593 50%, #3949ab 100%)',
+                    color: 'white',
+                    padding: 40,
+                    borderRadius: 8,
+                    minHeight: 320,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                      <h1 style={{ color: 'white', fontSize: 24, marginBottom: 8, marginTop: 0 }}>
+                        {form.getFieldValue('coverTitle') || '月度经营分析报告'}
+                      </h1>
+                      <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, marginBottom: 4 }}>
+                        {form.getFieldValue('coverSubtitle') || '连锁餐饮门店经营数据分析'}
+                      </p>
+                      <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 16 }}>
+                        报表周期: {periodLabel}
+                      </p>
+
+                      <div style={{
+                        display: 'flex',
+                        gap: 24,
+                        marginTop: 24,
+                        padding: '12px 0',
+                        borderTop: '1px solid rgba(255,255,255,0.2)',
+                        borderBottom: '1px solid rgba(255,255,255,0.2)'
+                      }}>
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>门店数</div>
+                          <div style={{ fontSize: 20, fontWeight: 'bold' }}>{stats.storeCount}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>总营收</div>
+                          <div style={{ fontSize: 20, fontWeight: 'bold' }}>
+                            {stats.totalRevenue >= 10000
+                              ? `¥${(stats.totalRevenue / 10000).toFixed(1)}万`
+                              : `¥${stats.totalRevenue.toFixed(0)}`}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>异常数</div>
+                          <div style={{ fontSize: 20, fontWeight: 'bold' }}>
+                            <Tag color={stats.anomalyCount > 0 ? 'error' : 'success'} style={{ marginLeft: 0 }}>
+                              {stats.anomalyCount}
+                            </Tag>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 32 }}>
+                        生成时间: {dayjs().format('YYYY-MM-DD HH:mm:ss')}
+                      </p>
+                    </div>
                   </div>
                 </Col>
                 <Col span={12}>
@@ -494,7 +624,11 @@ export default function ExportCenter() {
               快速导出数据
             </Button>
             <Button
-              onClick={() => setCurrentStep(0)}
+              onClick={() => {
+                setCurrentStep(0)
+                setSelectedMonth(null)
+                form.resetFields()
+              }}
               disabled={exporting}
             >
               重置
